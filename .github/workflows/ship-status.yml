@@ -1,0 +1,113 @@
+name: Ship of Theseus Self-Analysis
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git log --follow
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build Ship of Theseus
+        run: |
+          go build -o ship-of-theseus .
+
+      - name: Run Self-Analysis
+        run: |
+          ./ship-of-theseus --workers 2 --sample 5 > /tmp/analysis.txt 2>&1
+
+      - name: Get commit info
+        id: commit_info
+        run: |
+          echo "date=$(date +%Y-%m-%d)" >> $GITHUB_OUTPUT
+          echo "hash=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "count=$(git rev-list --count HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Extract originality percentage
+        id: extract
+        run: |
+          # Extract the originality percentage from the output
+          PERCENT=$(grep "Original Lines:" /tmp/analysis.txt | grep -oP '\d+\.\d+%' | head -1)
+          echo "originality=$PERCENT" >> $GITHUB_OUTPUT
+
+      - name: Update SHIP_STATUS.md
+        run: |
+          # Read the analysis output
+          ANALYSIS=$(cat /tmp/analysis.txt)
+          DATE="${{ steps.commit_info.outputs.date }}"
+          HASH="${{ steps.commit_info.outputs.hash }}"
+          COUNT="${{ steps.commit_info.outputs.count }}"
+          PERCENT="${{ steps.extract.outputs.originality }}"
+
+          # Create new SHIP_STATUS.md with latest at top
+          cat > SHIP_STATUS.md << 'HEADER'
+          # 🚢 Ship of Theseus - Self Analysis
+
+          This file tracks how the Ship of Theseus codebase evolves over time.
+          **Meta-commentary**: The tool that analyzes code evolution, analyzing itself!
+
+          **🤖 Automatically updated by GitHub Actions on every push to main.**
+
+          ---
+
+          HEADER
+
+          # Add latest analysis
+          echo "## Latest Analysis" >> SHIP_STATUS.md
+          echo "" >> SHIP_STATUS.md
+          echo "**Date**: $DATE" >> SHIP_STATUS.md
+          echo "**Commit**: \`$HASH\` ($COUNT total commits)" >> SHIP_STATUS.md
+          echo "**Analysis**: $PERCENT original code remaining" >> SHIP_STATUS.md
+          echo "" >> SHIP_STATUS.md
+          echo '```' >> SHIP_STATUS.md
+          cat /tmp/analysis.txt >> SHIP_STATUS.md
+          echo '```' >> SHIP_STATUS.md
+          echo "" >> SHIP_STATUS.md
+          echo "---" >> SHIP_STATUS.md
+          echo "" >> SHIP_STATUS.md
+
+          # Add instructions at bottom
+          cat >> SHIP_STATUS.md << 'FOOTER'
+          ## How This Works
+
+          1. GitHub Action runs on every push to main
+          2. Builds and executes `ship-of-theseus` on itself
+          3. Updates this file with the latest analysis
+          4. Commits changes back to the repository
+
+          Watch the originality percentage drop over time as the Ship of Theseus evolves!
+
+          ---
+
+          *"The ship wherein Theseus and the youth of Athens returned had thirty oars, and was preserved by the Athenians... for they took away the old planks as they decayed, putting in new and stronger timber in their place..."* — Plutarch
+          FOOTER
+
+      - name: Commit and push if changed
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add SHIP_STATUS.md
+
+          # Only commit if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to SHIP_STATUS.md"
+          else
+            git commit -m "🤖 Update ship status - ${{ steps.extract.outputs.originality }} original [skip ci]"
+            git push
+          fi
