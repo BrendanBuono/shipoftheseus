@@ -60,11 +60,13 @@ ship-of-theseus --sample 100
 
 For each line of code in the current repository:
 
-1. **Find Last Modification**: Use `git blame` to determine when the line was last changed
-2. **Trace Backwards**: Walk through git history (with `--follow` for renames)
-3. **Find Similar Lines**: At each commit, look for similar lines within ±10 lines
-4. **Measure Similarity**: Use Levenshtein distance to calculate percentage similarity
-5. **Determine Originality**: Lines with ≥25% similarity are "original", below that are "completely different"
+1. **Get Tracked Files**: Use `git ls-files` to get all tracked files (respects .gitignore)
+2. **Read from Git**: Get file content from `git show HEAD:file` (not working directory)
+3. **Get First Commit**: Find the file's first commit using `git log --follow`
+4. **Compare First to Current**: Compare line from first commit to current line
+5. **Find Similar Lines**: Look for similar lines within ±10 lines of position
+6. **Measure Similarity**: Use Levenshtein distance to calculate percentage similarity
+7. **Determine Originality**: Lines with ≥25% similarity are "original"
 
 ### Similarity Threshold
 
@@ -82,11 +84,19 @@ Lines can move within **±10 lines** and still be considered "the same line". Th
 
 ### What Gets Skipped
 
+**Automatically (via `git ls-files`):**
+- All files in `.gitignore` (logs, `.env`, build artifacts, etc.)
+- Untracked files
+- Ignored directories (`.git/`, etc.)
+
+**By file filtering:**
 - Binary files (images, executables, archives)
 - Generated code (`.pb.go`, `.gen.`, `_generated.`)
-- Vendor dependencies (`vendor/`, `node_modules/`)
-- Build artifacts (`dist/`, `build/`, `target/`)
-- Blank lines and comment-only lines
+- Vendor dependencies if committed (`vendor/`, `node_modules/`)
+
+**By line filtering:**
+- Blank lines
+- Comment-only lines (supports 30+ languages)
 
 ## Output Explained
 
@@ -140,18 +150,23 @@ ship-of-theseus --sample 100  # Sample every 100th commit instead of 50th
 
 ## Performance
 
-Expected analysis times:
+Tested on real repositories:
 
-| Repository Size | Files | Time | Memory |
+| Repository | Tracked Files | Analysis Time | Notes |
 |---|---|---|---|
-| Small | <100 | <30s | <500MB |
-| Medium | 1K-5K | <5min | <1GB |
-| Large | >10K | <30min | <2GB |
+| ship-of-theseus | 16 | <5s | Brand new project, 100% original |
+| bet-data (8mo old) | 305 | ~60s | 6-100% originality range |
 
-Tested on:
-- ✅ `grafana/grafana` (~5K files)
-- ✅ `golang/go` (~8K files)
-- ✅ `kubernetes/kubernetes` (~15K files)
+**Estimated performance** (untested):
+- Small repos (<100 files): <30 seconds
+- Medium repos (500-1K files): 1-5 minutes
+- Large repos (5K+ files): 10-30+ minutes
+
+Performance scales with:
+- Number of files
+- File size (lines per file)
+- Commit history depth
+- Number of parallel workers
 
 ## Technical Details
 
