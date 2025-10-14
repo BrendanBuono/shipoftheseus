@@ -148,11 +148,15 @@ func TraceFileLines(repoPath, filePath, fileContent string) ([]*models.LineHisto
 	// Split content into lines
 	lines := strings.Split(fileContent, "\n")
 
-	// Ensure blame info matches line count
-	if len(blameInfos) != len(lines) {
-		return nil, fmt.Errorf("blame line count (%d) doesn't match file line count (%d) for %s",
+	// Git blame may have fewer lines than the file (doesn't count trailing newlines)
+	// Use the blame count as the authoritative line count
+	if len(blameInfos) > len(lines) {
+		return nil, fmt.Errorf("blame line count (%d) exceeds file line count (%d) for %s",
 			len(blameInfos), len(lines), filePath)
 	}
+
+	// Only process lines that have blame info
+	lines = lines[:len(blameInfos)]
 
 	var histories []*models.LineHistory
 
