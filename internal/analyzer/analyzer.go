@@ -144,11 +144,11 @@ func worker(repoPath string, workChan <-chan string, resultChan chan<- *models.F
 
 // analyzeFile performs a complete analysis of a single file.
 func analyzeFile(repoPath, filePath string) (*models.FileAnalysis, error) {
-	// Read file content
-	fullPath := filepath.Join(repoPath, filePath)
-	content, err := os.ReadFile(fullPath)
+	// Read committed file content from git (not working directory)
+	// This ensures blame line count matches file line count
+	content, err := GetFileAtCommit(repoPath, "HEAD", filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
+		return nil, fmt.Errorf("failed to read file from git: %w", err)
 	}
 
 	// Split into lines and filter out comments/blanks
@@ -169,7 +169,7 @@ func analyzeFile(repoPath, filePath string) (*models.FileAnalysis, error) {
 	}
 
 	// Trace line histories
-	histories, err := TraceFileLines(repoPath, filePath, string(content))
+	histories, err := TraceFileLines(repoPath, filePath, content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to trace lines: %w", err)
 	}
