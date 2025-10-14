@@ -180,10 +180,31 @@ func printTimeline(snapshots []models.Snapshot) {
 	fmt.Print("          └")
 	fmt.Print(strings.Repeat("─", width))
 	fmt.Println("▶")
+
+	// Smart date formatting based on time span
+	timeSpan := snapshots[len(snapshots)-1].Date.Sub(snapshots[0].Date)
+	var dateFormat string
+
+	switch {
+	case timeSpan.Hours() < 24*365: // Less than 1 year - show month and day
+		dateFormat = "Jan 02"
+	case timeSpan.Hours() < 24*365*3: // 1-3 years - show year-month
+		dateFormat = "2006-01"
+	default: // More than 3 years - show just year
+		dateFormat = "2006"
+	}
+
+	leftLabel := snapshots[0].Date.Format(dateFormat)
+	rightLabel := snapshots[len(snapshots)-1].Date.Format(dateFormat)
+	padding := width - len(leftLabel) - len(rightLabel)
+	if padding < 0 {
+		padding = 0
+	}
+
 	fmt.Printf("           %s%s%s\n",
-		snapshots[0].Date.Format("2006"),
-		strings.Repeat(" ", width-12),
-		snapshots[len(snapshots)-1].Date.Format("2006"))
+		leftLabel,
+		strings.Repeat(" ", padding),
+		rightLabel)
 	fmt.Println()
 }
 
