@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"ship-of-theseus/internal/models"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/schollz/progressbar/v3"
 )
@@ -49,6 +51,10 @@ func AnalyzeRepository(repoPath string, numWorkers int) (*models.CodebaseAnalysi
 
 	fmt.Printf("Analyzing %d files with %d workers...\n\n", len(filesToAnalyze), numWorkers)
 
+	// Shuffle files to distribute slow files evenly across workers
+	// This prevents clustering of slow files at the end causing the progress bar to "hang"
+	shuffleFiles(filesToAnalyze)
+
 	// Process files in parallel using worker pool
 	fileAnalyses := processFilesParallel(repoPath, filesToAnalyze, numWorkers)
 
@@ -76,6 +82,17 @@ func getGitTrackedFiles(repoPath string) ([]string, error) {
 	}
 
 	return lines, nil
+}
+
+// shuffleFiles randomizes the order of files to distribute slow files evenly.
+// This prevents the progress bar from appearing to "hang" at 99% when slow files
+// cluster at the end of the alphabetically-sorted git ls-files output.
+func shuffleFiles(files []string) {
+	// Seed with current time for randomness
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	r.Shuffle(len(files), func(i, j int) {
+		files[i], files[j] = files[j], files[i]
+	})
 }
 
 // FileProgress tracks the current file being processed
