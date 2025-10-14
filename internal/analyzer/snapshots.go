@@ -22,6 +22,15 @@ import (
 //     - Churn factor: commits with high churn reduce originality more
 //  4. Apply formula: originalPct = 100 * (1 - ageRatio * decayRate) * churnFactor
 //  5. Minimum baseline: 10% (code rarely drops below this)
+//
+// PHILOSOPHICAL NOTE: Originality Can Increase Over Time
+// ======================================================
+// This heuristic allows originality percentages to INCREASE at certain points in the timeline.
+// This is intentional and philosophically meaningful. When code refactors toward simplicity
+// or reverts complex changes, it becomes more similar to its original form - the Ship of
+// Theseus getting its old planks back. This measures "snapshot similarity to origin", not
+// "accumulated irreversible change". A codebase that simplifies after experimentation is
+// becoming MORE original, and that's worth celebrating.
 func GenerateHistoricalSnapshots(repoPath string, sampleRate int, currentOriginalPct float64) ([]models.Snapshot, error) {
 	// Get all commits
 	allCommits, err := GetAllCommits(repoPath)

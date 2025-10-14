@@ -223,6 +223,19 @@ Uses **heuristic estimation** rather than full re-analysis:
 
 This is much faster than re-analyzing every commit, with acceptable accuracy trade-off.
 
+#### Can Originality Increase Over Time?
+
+**Yes!** And this is philosophically meaningful, not a bug.
+
+When you see originality percentages **increase** in the timeline, it means the code has refactored back toward simplicity or reverted unnecessary complexity. Think of it like Theseus getting his **old planks back**—the ship becomes more like its original form.
+
+This tool measures **"snapshot similarity to origin"**, not **"accumulated irreversible change"**. If code experiments with complexity, then simplifies again, that's progress worth celebrating. The timeline captures this journey:
+
+- **Decreasing originality**: Code evolving away from its initial form
+- **Increasing originality**: Code returning toward original simplicity through refactoring
+
+Both directions tell meaningful stories about how your codebase evolves.
+
 ## Contributing
 
 Contributions welcome! Areas for improvement:
