@@ -10,6 +10,8 @@ import (
 	"ship-of-theseus/internal/models"
 	"strings"
 	"sync"
+
+	"github.com/schollz/progressbar/v3"
 )
 
 // AnalyzeRepository performs a complete Ship of Theseus analysis on a git repository.
@@ -45,10 +47,12 @@ func AnalyzeRepository(repoPath string, numWorkers int) (*models.CodebaseAnalysi
 		return nil, fmt.Errorf("no files to analyze after filtering")
 	}
 
-	fmt.Printf("Analyzing %d files with %d workers...\n", len(filesToAnalyze), numWorkers)
+	fmt.Printf("Analyzing %d files with %d workers...\n\n", len(filesToAnalyze), numWorkers)
 
 	// Process files in parallel using worker pool
 	fileAnalyses := processFilesParallel(repoPath, filesToAnalyze, numWorkers)
+
+	fmt.Println() // Add space after progress bar
 
 	// Aggregate results
 	analysis := aggregateResults(fileAnalyses)
@@ -74,6 +78,12 @@ func getGitTrackedFiles(repoPath string) ([]string, error) {
 	return lines, nil
 }
 
+// FileProgress tracks the current file being processed
+type FileProgress struct {
+	sync.Mutex
+	currentFile string
+}
+
 // processFilesParallel processes files using a worker pool for parallelization.
 // This is critical for performance on large repositories.
 func processFilesParallel(repoPath string, files []string, numWorkers int) []*models.FileAnalysis {
@@ -81,13 +91,33 @@ func processFilesParallel(repoPath string, files []string, numWorkers int) []*mo
 	workChan := make(chan string, len(files))
 	resultChan := make(chan *models.FileAnalysis, len(files))
 
+	// Track current file being processed
+	progress := &FileProgress{}
+
+	// Create progress bar
+	bar := progressbar.NewOptions(len(files),
+		progressbar.OptionSetDescription("Analyzing files"),
+		progressbar.OptionSetWriter(os.Stderr),
+		progressbar.OptionShowCount(),
+		progressbar.OptionSetWidth(50),
+		progressbar.OptionThrottle(100), // Update every 100ms
+		progressbar.OptionShowIts(),
+		progressbar.OptionSetItsString("files"),
+		progressbar.OptionOnCompletion(func() {
+			fmt.Fprint(os.Stderr, "\n")
+		}),
+		progressbar.OptionSpinnerType(14),
+		progressbar.OptionFullWidth(),
+		progressbar.OptionSetRenderBlankState(true),
+	)
+
 	// WaitGroup to track worker completion
 	var wg sync.WaitGroup
 
 	// Start workers
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go worker(repoPath, workChan, resultChan, &wg)
+		go workerWithProgress(repoPath, workChan, resultChan, progress, bar, &wg)
 	}
 
 	// Send work to workers
@@ -107,28 +137,44 @@ func processFilesParallel(repoPath string, files []string, numWorkers int) []*mo
 	for result := range resultChan {
 		if result != nil {
 			results = append(results, result)
-			fmt.Printf("Completed: %s (%d lines, %.1f%% original)\n",
-				result.Path, result.TotalLines, float64(result.OriginalLines)/float64(result.TotalLines)*100)
 		}
 	}
 
 	return results
 }
 
-// worker processes files from the work channel and sends results to result channel.
-func worker(repoPath string, workChan <-chan string, resultChan chan<- *models.FileAnalysis, wg *sync.WaitGroup) {
+// workerWithProgress processes files from the work channel and sends results to result channel.
+// Updates progress bar as files complete.
+func workerWithProgress(repoPath string, workChan <-chan string, resultChan chan<- *models.FileAnalysis, progress *FileProgress, bar *progressbar.ProgressBar, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for filePath := range workChan {
+		// Update current file being processed
+		progress.Lock()
+		progress.currentFile = filePath
+		bar.Describe(fmt.Sprintf("Analyzing: %s", truncatePath(filePath, 60)))
+		progress.Unlock()
+
 		analysis, err := analyzeFile(repoPath, filePath)
 		if err != nil {
-			// Log error but continue processing other files
-			fmt.Printf("Warning: Failed to analyze %s: %v\n", filePath, err)
-			continue
+			// Log error but continue processing other files (clear line first)
+			fmt.Fprintf(os.Stderr, "\nWarning: Failed to analyze %s: %v\n", filePath, err)
+		} else {
+			resultChan <- analysis
 		}
 
-		resultChan <- analysis
+		// Update progress bar
+		bar.Add(1)
 	}
+}
+
+// truncatePath shortens a file path to fit within maxLen characters.
+func truncatePath(path string, maxLen int) string {
+	if len(path) <= maxLen {
+		return path
+	}
+	// Truncate from the left, keeping the filename visible
+	return "..." + path[len(path)-maxLen+3:]
 }
 
 // analyzeFile performs a complete analysis of a single file.
