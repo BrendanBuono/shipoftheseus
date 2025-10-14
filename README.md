@@ -35,7 +35,7 @@ sudo mv ship-of-theseus /usr/local/bin/
 ### Using Go Install
 
 ```bash
-go install github.com/yourusername/ship-of-theseus@latest
+go install github.com/BrendanBuono/ship-of-theseus@latest
 ```
 
 ## Quick Start
