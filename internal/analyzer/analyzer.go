@@ -3,6 +3,7 @@ package analyzer
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"ship-of-theseus/internal/filter"
@@ -26,22 +27,17 @@ func AnalyzeRepository(repoPath string, numWorkers int) (*models.CodebaseAnalysi
 		return nil, fmt.Errorf("not a git repository: %s", repoPath)
 	}
 
-	// Find all files in repository
-	files, err := findAllFiles(repoPath)
+	// Get all files tracked by git (automatically respects .gitignore)
+	files, err := getGitTrackedFiles(repoPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find files: %w", err)
+		return nil, fmt.Errorf("failed to get git files: %w", err)
 	}
 
 	// Filter out files we should skip (binary, generated, vendor)
 	var filesToAnalyze []string
 	for _, file := range files {
-		relPath, err := filepath.Rel(repoPath, file)
-		if err != nil {
-			continue
-		}
-
-		if !filter.ShouldSkipFile(relPath) {
-			filesToAnalyze = append(filesToAnalyze, relPath)
+		if !filter.ShouldSkipFile(file) {
+			filesToAnalyze = append(filesToAnalyze, file)
 		}
 	}
 
@@ -60,29 +56,22 @@ func AnalyzeRepository(repoPath string, numWorkers int) (*models.CodebaseAnalysi
 	return analysis, nil
 }
 
-// findAllFiles recursively finds all files in a directory.
-func findAllFiles(root string) ([]string, error) {
-	var files []string
+// getGitTrackedFiles gets all files tracked by git (respects .gitignore automatically).
+// This is much better than walking the directory ourselves.
+func getGitTrackedFiles(repoPath string) ([]string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "ls-files")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files failed: %w", err)
+	}
 
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+	// Split by newlines to get individual files
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		return nil, fmt.Errorf("no tracked files found")
+	}
 
-		// Skip .git directory itself
-		if info.IsDir() && info.Name() == ".git" {
-			return filepath.SkipDir
-		}
-
-		// Only include regular files
-		if !info.IsDir() {
-			files = append(files, path)
-		}
-
-		return nil
-	})
-
-	return files, err
+	return lines, nil
 }
 
 // processFilesParallel processes files using a worker pool for parallelization.
