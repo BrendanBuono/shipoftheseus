@@ -13,21 +13,19 @@ const (
 )
 
 // TraceLineHistory traces a single line back through git history to find its first appearance.
-// It follows the line through commits, handling movement within files and file renames.
+// Simplified algorithm: Get the line from the file's first commit and compare to current.
 //
 // Algorithm:
-// 1. Start with the current line and its last modification commit (from blame)
-// 2. Get the full file history with rename tracking (--follow)
-// 3. Walk backwards through commits
-// 4. At each commit, look for a similar line within ±10 lines of expected position
-// 5. If found with ≥25% similarity, continue tracing
-// 6. If not found or similarity drops below threshold, we've found the original
+// 1. Get the file's first commit (oldest in history)
+// 2. Get the line at the same position (±10 lines) in that first commit
+// 3. Compare first commit's line to current line
+// 4. Calculate similarity
 //
 // Returns a LineHistory struct with first/last commit info and similarity score.
 func TraceLineHistory(repoPath, filePath string, currentLine string, currentLineNum int, blameInfo BlameInfo) (*models.LineHistory, error) {
 	// Get the complete file history following renames
 	commitHashes, err := GetFileHistory(repoPath, filePath)
-	if err != nil {
+	if err != nil || len(commitHashes) == 0 {
 		// If we can't get history, use blame info as both first and last
 		return &models.LineHistory{
 			CurrentLine:     currentLine,
@@ -42,41 +40,38 @@ func TraceLineHistory(repoPath, filePath string, currentLine string, currentLine
 		}, nil
 	}
 
-	// Walk backwards through history to find the first appearance
-	originalLine := currentLine
-	originalLineNum := currentLineNum
-	originalCommitHash := blameInfo.CommitHash
-	var originalCommitDate = blameInfo.CommitDate
+	// Get the FIRST (oldest) commit where this file existed
+	firstCommitHash := commitHashes[len(commitHashes)-1]
 
-	// Start from the oldest commit and work forward to find first appearance
-	for i := len(commitHashes) - 1; i >= 0; i-- {
-		commitHash := commitHashes[i]
-
-		// Get file content at this commit
-		content, err := GetFileAtCommit(repoPath, commitHash, filePath)
-		if err != nil {
-			// File might not exist at this commit (before creation or after deletion)
-			continue
-		}
-
-		lines := strings.Split(content, "\n")
-
-		// Look for our line within the movement window
-		matchedLine, matchedLineNum := findSimilarLineInRange(lines, originalLineNum, originalLine)
-
-		if matchedLine != "" {
-			// Found a match - this becomes our new "original"
-			originalLine = matchedLine
-			originalLineNum = matchedLineNum
-			originalCommitHash = commitHash
-			// Note: We'd need to get commit date from git, but for performance we'll use blame date
-		} else {
-			// No match found - the previous commit was the first appearance
-			break
-		}
+	// Get file content at first commit
+	firstContent, err := GetFileAtCommit(repoPath, firstCommitHash, filePath)
+	if err != nil {
+		// File didn't exist in first commit - treat current as original
+		return &models.LineHistory{
+			CurrentLine:     currentLine,
+			OriginalLine:    currentLine,
+			CurrentLineNum:  currentLineNum,
+			OriginalLineNum: currentLineNum,
+			FirstCommitHash: firstCommitHash,
+			FirstCommitDate: blameInfo.CommitDate,
+			LastCommitHash:  blameInfo.CommitHash,
+			LastCommitDate:  blameInfo.CommitDate,
+			Similarity:      1.0,
+		}, nil
 	}
 
-	// Calculate final similarity between original and current
+	firstLines := strings.Split(firstContent, "\n")
+
+	// Look for a similar line in the first commit within ±10 lines of current position
+	originalLine, originalLineNum := findSimilarLineInRange(firstLines, currentLineNum, currentLine)
+
+	if originalLine == "" {
+		// No similar line found in first commit - this is a new line
+		originalLine = ""
+		originalLineNum = currentLineNum
+	}
+
+	// Calculate similarity between first and current
 	similarity := CalculateSimilarity(originalLine, currentLine)
 
 	return &models.LineHistory{
@@ -84,8 +79,8 @@ func TraceLineHistory(repoPath, filePath string, currentLine string, currentLine
 		OriginalLine:    originalLine,
 		CurrentLineNum:  currentLineNum,
 		OriginalLineNum: originalLineNum,
-		FirstCommitHash: originalCommitHash,
-		FirstCommitDate: originalCommitDate,
+		FirstCommitHash: firstCommitHash,
+		FirstCommitDate: blameInfo.CommitDate, // Simplified: use blame date
 		LastCommitHash:  blameInfo.CommitHash,
 		LastCommitDate:  blameInfo.CommitDate,
 		Similarity:      similarity,
