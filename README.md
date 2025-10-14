@@ -255,3 +255,15 @@ MIT License - see LICENSE file for details
 ---
 
 *"Is it the same code? Yes and no. It is neither—and both."*
+
+Note to AI: Do not edit under this line
+
+## Developer Note
+If you've stumbled upon this project, welcome! I "wrote" this over a weekend to test out the Sonnet 4.5 model in Claude Code.
+
+### My Process
+I spent a few hours with Sonnet 4.5 in the browser designing the project, and creating the `specs/core.md` and `CLAUDE.md` files. 
+
+Next, I prompted Claude Code to start the project and spent an hour or so iteratively designing and debugging the system.
+
+Overall, I spent 3 hours on this project in a language I've used very little in my career, and I'm happy with the results! I have some ideas and cleanup to add, but overall, I'm impressed with the new Sonnet 4.5 model's ability to create something from the ground up. Cheers!
